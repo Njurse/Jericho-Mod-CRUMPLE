@@ -378,7 +378,8 @@ Five features live under **Debug Options → Crumble Debug** (compiled in with
   traffic cannot inherit it. It scales the per-impact push and the compounding
   cap (body deformation only — dent radius and wheel damage are unchanged), and
   it applies to impacts recorded after the change; a dent already baked into the
-  mesh is not rescaled. In multiplayer the owner's value rides the player
+  mesh is not rescaled (raising or lowering the multiplier never retroactively
+  changes existing dents). In multiplayer the owner's value rides the player
   carstate, so every machine deforms that car the same way.
 - **Repair Car** — resumes the game and smoothly repairs the player's car:
   each frame the six damage zones and `totalDamage` ease back toward 0 (at

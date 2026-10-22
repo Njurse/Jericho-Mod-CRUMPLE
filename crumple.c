@@ -153,8 +153,10 @@ CRUMPLE_PARAMS gCrumpleParams =
 					//                      Hard hits should read as a real crumple; still
 					//                      far below the car's half-length.
 	2400,		// compoundCapPct      max TOTAL per-vertex push across all impacts,
-					//                      same units (0.586x of the half-length). Below
-					//                      the half-length, so no hit folds it through itself.
+					//                      same units (0.586x of the half-length at
+					//                      1.0x). A car's own crush multiplier raises
+					//                      this deliberately; the plane clamp is what
+					//                      stops a dent travelling past the impact.
 	0,			// damageBoostScale    zone-damage amplification (0 = impact-shaped only,
 					//                      avoids zone-boundary seams)
 
