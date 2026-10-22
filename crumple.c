@@ -751,11 +751,23 @@ static void crumpleRecordImpactInternal(CAR_DATA* cp0, CAR_DATA* cp1, const VECT
 
 	st0->otherCarId = (cp1 != NULL) ? CAR_INDEX(cp1) : -1;
 
-	// Engine normal points FROM cp0 TOWARD cp1 (or from the car toward the
-	// wall). Deformation must be INWARD, so cp0's inward normal = -normal.
-	inward.vx = -worldNormal->vx;
-	inward.vy = -worldNormal->vy;
-	inward.vz = -worldNormal->vz;
+	// Car-car: the engine normal points FROM cp0 TOWARD cp1, so cp0's inward
+	// normal is its negation. Wall/building: surfNormal already points out of
+	// the wall and INTO the car, so it IS the inward normal. Negating it (which
+	// this used to do for both) pushed the dent OUT of the body on wall hits -
+	// the "dent on the wrong side" report, which is almost entirely walls.
+	if (cp1 != NULL)
+	{
+		inward.vx = -worldNormal->vx;
+		inward.vy = -worldNormal->vy;
+		inward.vz = -worldNormal->vz;
+	}
+	else
+	{
+		inward.vx = worldNormal->vx;
+		inward.vy = worldNormal->vy;
+		inward.vz = worldNormal->vz;
+	}
 
 	// snapshot the impact in car-local space NOW: the deferred denting pass
 	// runs up to a few frames later, and the car may have rotated by then
