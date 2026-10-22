@@ -78,6 +78,7 @@
 #include "jericho.h"	// JERICHO: module API (this file is the crumple package)
 #include "jer_events.h"	// JERICHO: event argument structs
 #include "jer_pause_menu.h"	// JERICHO: module pause menu (Crumple Debug)
+#include "jer_crumple.h"	// JERICHO: per-car crush multiplier contract (mp)
 
 
 // Buddha mode is like Source engine's -- you can take damage down to 1HP, this avoids death so the damage can still be extensively tested without full Invulnerability cheat
@@ -1723,6 +1724,49 @@ static int crumpleOnGetBuddha(void* userdata, void* args)
 	return JER_RESULT_CONTINUE;
 }
 
+/* mp <-> crumple: the per-car body-crush multiplier. GET reports the car's
+ * stored value (the local player's car when mp is sending its state); SET
+ * writes a peer's car from its owner's carstate. */
+static int crumpleOnGetCrushScale(void* userdata, void* args)
+{
+	JER_CRUMPLE_SCALE_ARGS* a = (JER_CRUMPLE_SCALE_ARGS*)args;
+
+	(void)userdata;
+
+	if (a != NULL)
+		a->scale = crumpleGetCarCrushScale(a->carId);
+
+	return JER_RESULT_CONTINUE;
+}
+
+static int crumpleOnSetCrushScale(void* userdata, void* args)
+{
+	JER_CRUMPLE_SCALE_ARGS* a = (JER_CRUMPLE_SCALE_ARGS*)args;
+	int scale;
+
+	(void)userdata;
+
+	if (a == NULL || a->carId < 0 || a->carId >= MAX_CARS)
+		return JER_RESULT_CONTINUE;
+
+	scale = a->scale;
+
+	if (scale < CRUMPLE_CRUSH_MIN)
+		scale = CRUMPLE_CRUSH_MIN;
+	else if (scale > CRUMPLE_CRUSH_MAX)
+		scale = CRUMPLE_CRUSH_MAX;
+
+	/* the menu and the wire are both half-step, so snap to it */
+	scale = ((scale + CRUMPLE_CRUSH_STEP / 2) / CRUMPLE_CRUSH_STEP) * CRUMPLE_CRUSH_STEP;
+
+	if (scale < CRUMPLE_CRUSH_MIN)
+		scale = CRUMPLE_CRUSH_MIN;
+
+	crumpleCarCrushScale[a->carId] = scale;
+
+	return JER_RESULT_CONTINUE;
+}
+
 /* ------------------------------------------------------------------ */
 /* Pause menu (Crumple Debug) — registered via jer_pause_menu.h, so    */
 /* nothing is hardcoded into the game's pause code.                    */
@@ -1902,6 +1946,8 @@ JER_MODULE_ENTRY(jer_module_crumple_entry)(JERICHO_CONTEXT* ctx)
 	ctx->jer_register_hook(ctx, JER_EVENT_DRAW_WHEEL, crumpleOnDrawWheel, NULL, 0);
 	ctx->jer_register_hook(ctx, JER_EVENT_GET_WHEEL_PARAMS, crumpleOnGetWheelParams, NULL, 0);
 	ctx->jer_register_hook(ctx, JER_EVENT_GET_BUDDHA, crumpleOnGetBuddha, NULL, 0);
+	ctx->jer_register_hook(ctx, JER_CRUMPLE_GET_SCALE, crumpleOnGetCrushScale, NULL, 0);
+	ctx->jer_register_hook(ctx, JER_CRUMPLE_SET_SCALE, crumpleOnSetCrushScale, NULL, 0);
 
 	/* pause menu: provided by this module, not hardcoded in the game */
 	jer_pause_menu_register(&CrumplePauseMenu);
