@@ -90,7 +90,7 @@ int gCrumpleGlobalScale = 4096;
 CRUMPLE_PARAMS gCrumpleParams =
 {
 	// impact strength
-	110000,		// impactNormalize     howHard that counts as a full-scale dent.
+	102000,		// impactNormalize     howHard that counts as a full-scale dent (one more small body-strength step down)
 					//                      NOT ~100k: the body path only became
 					//                      capable of denting at all when it was put
 					//                      in proper 4096 fixed point (see the note in
@@ -103,25 +103,20 @@ CRUMPLE_PARAMS gCrumpleParams =
 					//                      that dents proportionally. Wheels are
 					//                      calibrated separately (wheelNormalize).
 	768,		// impactMinHowHard    below this: no deformation
-	512,		// maxDisplacementPct  max push per impact, as a fraction of the
-					//                      car's own half-length (4096 = 1.0 -> 0.25x).
-					//                      Was an absolute 4290 "world units", about
-					//                      1.05x a car's half-length: ONE hit could drag
-					//                      a bumper vertex to the middle of the body --
-					//                      that is the overscale this replaces.
-	1229,		// compoundCapPct      max TOTAL per-vertex push across all impacts,
-					//                      same units (0.30x of the half-length). A car
-					//                      can never lose more than 30% of its length
-					//                      to damage, so no hit folds it through itself.
+	800,		// maxDisplacementPct  max push per impact, as a fraction of the
+					//                      car's own half-length (4096 = 1.0 -> 0.195x).
+					//                      Hard hits should read as a real crumple; still
+					//                      far below the car's half-length.
+	2000,		// compoundCapPct      max TOTAL per-vertex push across all impacts,
+					//                      same units (0.488x of the half-length). Still
+					//                      below half a car, so no hit folds it through itself.
 	0,			// damageBoostScale    zone-damage amplification (0 = impact-shaped only,
 					//                      avoids zone-boundary seams)
 
 	// falloff
-	440,		// dentRadiusPct       dent radius, as a fraction of the car's own
-					//                      half-length (0.10x), so a hit crumples
-					//                      locally on a long car and a stubby one alike.
-					//                      Was an absolute 700 "world units" (~0.17x),
-					//                      which spread the dent over most of the body.
+	700,		// dentRadiusPct       dent radius, as a fraction of the car's own
+					//                      half-length (0.171x), so a hard hit caves a
+					//                      wider panel without spreading over the whole car.
 	326,		// contactDeepen       extra depth for oblique (pole/edge) impacts
 	1,			// falloffSmooth       0 = linear, 1 = squared
 
@@ -134,7 +129,7 @@ CRUMPLE_PARAMS gCrumpleParams =
 
 	// mass / health
 	384,		// massFactorMin       light-vs-heavy clamp (0.094x)
-	8192,		// massFactorMax       heavy-vs-light clamp (2.0x)
+	16384,		// massFactorMax       heavy-vs-light clamp (4.0x) — freight-train cops
 	4096,		// worldImpactFactor   static/world hits
 	2048,		// healthInfluence     damaged cars crumple more easily
 
@@ -143,19 +138,17 @@ CRUMPLE_PARAMS gCrumpleParams =
 
 	// wheels
 	160, 		// wheelProximity      impact distance that counts as near a wheel
-	60000,		// wheelMinHowHard     threshold before a wheel bends (above damage threshold ~56k... tuned down so the d-pad sim can bend wheels)
-	120000,		// wheelNormalize      howHard for a full bend kick
-	24,			// wheelBendStep       damage level added per full kick — 2-3 kicks
-					//                      reach max, so one absolute T-bone
-					//                      (a few frames of contact) breaks a wheel
-	31,			// wheelBendMaxLevel   max cumulative damage level (bend = level * direction) — x0.65
-	31,			// wheelBendMaxX       max lateral bend (component clamp) — x0.65
-	16,			// wheelBendMaxY       max vertical bend (visual sag only) — x0.65
-	8,			// wheelBendMaxZ       max toe bend (component clamp) — x0.5, so the
-					//                      wheels don't distort as far longitudinally
+	65000,		// wheelMinHowHard     threshold before a wheel bends (median step back from 70k)
+	130000,		// wheelNormalize      howHard for a full bend kick (median between 120k and 140k)
+	18,			// wheelBendStep       damage level added per full kick — 2-3 kicks
+					//                      reach max; reduced so the wheel moves less
+	31,			// wheelBendMaxLevel   max cumulative damage level (bend = level * direction)
+	18,			// wheelBendMaxX       max lateral TRANSLATION (was 31) — rotation carried by the scales below
+	8,			// wheelBendMaxY       max vertical sag (was 16)
+	5,			// wheelBendMaxZ       max longitudinal translation (was 8)
 
 	// impact curve
-	2,			// impactCurve          squared: hard hits dent much deeper
+	3,			// impactCurve          3 = square-root: light hits dent sooner; cap unchanged
 
 	// wheel physics
 	192,		// wheelScrubForce      ~4.7% lateral drag per unit of bend
@@ -164,10 +157,10 @@ CRUMPLE_PARAMS gCrumpleParams =
 
 	// wheel draw (visual mesh only - the vert camber/toe lean, x2 so the
 	// distortion reads clearly to the player)
-	29012,		// wheelCamberScale     max lateral bend -> ~30deg camber (roll)
-	38740,		// wheelToeScale        max longitudinal bend -> ~40deg toe (yaw)
-	38827,		// wheelSteerScale      FRONT max lateral bend -> ~40deg steering deviation
-	9883,		// wheelSteerScaleRear  REAR max lateral bend -> ~4deg (twist only,
+	52000,		// wheelCamberScale     max lateral translation -> ~31deg camber (roll)
+	64000,		// wheelToeScale        max longitudinal translation -> ~35deg toe (yaw)
+	70000,		// wheelSteerScale      FRONT max lateral translation -> ~36deg steering deviation
+	17000,		// wheelSteerScaleRear  REAR max lateral translation -> ~7deg (twist only,
 					//                      must not steer the car or distort the drive)
 
 	// debug / repair
@@ -966,8 +959,10 @@ static void crumpleDeformInternal(CAR_DATA* cp, const short* tempDamage)
 				 car_data[st->otherCarId].ap.carCos != NULL &&
 				 car_data[st->otherCarId].ap.carCos->mass >= 0x7fff)
 		{
-			// static world / infinite-mass opponent
-			massFactor = p->worldImpactFactor;
+			// An infinite-mass CAR is a battering ram, not a wall. Treating it
+			// as worldImpactFactor made the heaviest cops crush LESS than an
+			// ordinary heavy car; use the full asymmetry instead.
+			massFactor = p->massFactorMax;
 		}
 		else if (st->otherCarId < 0)
 		{
@@ -1073,9 +1068,13 @@ static void crumpleDeformInternal(CAR_DATA* cp, const short* tempDamage)
 		else if (strength > 4096)
 			strength = 4096;
 
-		// hard/high-speed impacts deform disproportionately more
-		if (p->impactCurve >= 2)
+		// impact response: 2 = squared (hard hits only), 3 = square-root
+		// (concave: light hits dent sooner). Neither changes the displacement
+		// cap, so the maximum push stays the same.
+		if (p->impactCurve == 2)
 			strength = FIXEDH(strength * strength);
+		else if (p->impactCurve == 3)
+			strength = SquareRoot0((u_int)strength * 4096);
 
 		for (i = 0; i < numVerts; i++)
 		{
