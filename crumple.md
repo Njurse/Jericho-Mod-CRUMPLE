@@ -311,11 +311,11 @@ world units — see §3.1 for why. Raising one raises it for every car at once.
 |-------|---------|--------|
 | `impactNormalize` | 200000 | `howHard` that counts as a full-scale dent (car-car damage starts ≈ 56k, civ cars die > 204800). Set to the "destroyed" threshold, not ~100k: the body path only dents at all now that it is in proper 4096 fixed point, and at 100k an ordinary crash saturated and flattened the car in one hit |
 | `impactMinHowHard` | 2048 | below this, no deformation (safety; denting only runs when damage was applied anyway) |
-| `maxDisplacementPct` | 1024 (0.25×) | hard cap on per-impact vertex push — a fraction of the car's **half-length** (4096 = 1.0), see §3.1 |
-| `compoundCapPct` | 1229 (0.30×) | max TOTAL per-vertex push across all recorded impacts (compounding guard), same units |
+| `maxDisplacementPct` | 950 (0.232×) | hard cap on per-impact vertex push — a fraction of the car's **half-length** (4096 = 1.0), see §3.1 |
+| `compoundCapPct` | 2400 (0.586×) | max TOTAL per-vertex push across all recorded impacts (compounding guard), same units |
 | `damageBoostScale` | 0 | zone-damage amplification. **Keep 0**: a per-zone boost steps at zone boundaries (visible seams) and makes the dent shape depend on the last panel hit — the procedural dent should be purely impact-shaped |
-| `dentRadiusPct` | 410 (0.10×) | dent radius as a fraction of the car's half-length — **concentrated**: a hit crumples locally instead of translating the whole body |
-| `contactDeepen` | 1024 | extra depth (0..4096) for oblique pole/edge impacts (see §3 contact profile) |
+| `dentRadiusPct` | 900 (0.220×) | dent radius as a fraction of the car's half-length — **concentrated**: a hit crumples locally instead of translating the whole body |
+| `contactDeepen` | 650 | extra depth (0..4096) for oblique pole/edge impacts (up to ~1.16× at a fully oblique normal; see §3 contact profile) |
 | `falloffSmooth` | 1 | 0 = linear falloff, 1 = squared (smoother edge) |
 | `cabinResistance` | 4096 | resistance at the cabin centre (rigid) |
 | `noseResistance` | 128 | resistance at the AABB extremes (soft) |

@@ -148,21 +148,22 @@ CRUMPLE_PARAMS gCrumpleParams =
 					//                      that dents proportionally. Wheels are
 					//                      calibrated separately (wheelNormalize).
 	768,		// impactMinHowHard    below this: no deformation
-	800,		// maxDisplacementPct  max push per impact, as a fraction of the
-					//                      car's own half-length (4096 = 1.0 -> 0.195x).
+	950,		// maxDisplacementPct  max push per impact, as a fraction of the
+					//                      car's own half-length (4096 = 1.0 -> 0.232x).
 					//                      Hard hits should read as a real crumple; still
 					//                      far below the car's half-length.
-	2000,		// compoundCapPct      max TOTAL per-vertex push across all impacts,
-					//                      same units (0.488x of the half-length). Still
-					//                      below half a car, so no hit folds it through itself.
+	2400,		// compoundCapPct      max TOTAL per-vertex push across all impacts,
+					//                      same units (0.586x of the half-length). Below
+					//                      the half-length, so no hit folds it through itself.
 	0,			// damageBoostScale    zone-damage amplification (0 = impact-shaped only,
 					//                      avoids zone-boundary seams)
 
 	// falloff
-	700,		// dentRadiusPct       dent radius, as a fraction of the car's own
-					//                      half-length (0.171x), so a hard hit caves a
+	900,		// dentRadiusPct       dent radius, as a fraction of the car's own
+					//                      half-length (0.220x), so a hard hit caves a
 					//                      wider panel without spreading over the whole car.
-	326,		// contactDeepen       extra depth for oblique (pole/edge) impacts
+	650,		// contactDeepen       extra depth for oblique (pole/edge) impacts
+					//                      (up to ~1.16x at a fully oblique normal)
 	1,			// falloffSmooth       0 = linear, 1 = squared
 
 	// structure
