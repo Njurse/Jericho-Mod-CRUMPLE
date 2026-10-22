@@ -8,9 +8,9 @@ The flagship JERICHO package: impact-driven car damage for REDRIVER2.
   directional damage, and body slump toward a vertically-bent wheel.
 - **Physics**: wheel-damage-aware raycasts (bounded), lateral scrub, and
   surface-roughness amplification on grass scaled by cumulative wheel damage.
-- **Debug**: the **Crumple Debug** pause submenu (Player Crumple, D-Pad Deform,
-  Buddha Mode, Repair Car) and the overlay impact readout, via `JER_EVENT_PAUSE_MENU` /
-  `JER_EVENT_GET_IMPACT_INFO`.
+- **Debug**: the **Crumple Debug** pause submenu (Player Crumple, Buddha Mode,
+  Crush Multiplier, D-Pad Deform, Repair Car) and the overlay impact readout, via
+  `JER_EVENT_PAUSE_MENU` / `JER_EVENT_GET_IMPACT_INFO`.
 
 ## How it plugs in
 

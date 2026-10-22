@@ -89,6 +89,45 @@ int gCrumpleBuddha = 0;
 int gCrumplePlayerEnabled = 1;
 int gCrumpleGlobalScale = 4096;
 
+/* Per-CAR body-crush multiplier (4096 = 1.0x, 0 = unset). The pause menu edits
+ * the local player's car; mp writes a peer's car from its owner's carstate. It
+ * lives OUTSIDE CRUMPLE_CAR_STATE on purpose: resetting a car's damage must not
+ * throw away the multiplier its driver chose for it. */
+#define CRUMPLE_CRUSH_STEP	2048	/* 0.5x */
+#define CRUMPLE_CRUSH_MIN	4096	/* 1.0x */
+#define CRUMPLE_CRUSH_MAX	40960	/* 10.0x */
+
+static int crumpleCarCrushScale[MAX_CARS];
+
+/* Stored value for a car, defaulting to 1.0x. */
+static int crumpleGetCarCrushScale(int carId)
+{
+	int scale;
+
+	if (carId < 0 || carId >= MAX_CARS)
+		return CRUMPLE_CRUSH_MIN;
+
+	scale = crumpleCarCrushScale[carId];
+
+	if (scale < CRUMPLE_CRUSH_MIN || scale > CRUMPLE_CRUSH_MAX)
+		return CRUMPLE_CRUSH_MIN;
+
+	return scale;
+}
+
+/* What the deformation pass applies. Only a PLAYER car may carry a driver's
+ * choice: a slot that has been recycled as traffic must not inherit one. */
+static int crumpleEffectiveCrushScale(const CAR_DATA* cp)
+{
+	if (cp == NULL || cp->id < 0 || cp->id >= MAX_CARS)
+		return CRUMPLE_CRUSH_MIN;
+
+	if (cp->controlType != CONTROL_TYPE_PLAYER)
+		return CRUMPLE_CRUSH_MIN;
+
+	return crumpleGetCarCrushScale(cp->id);
+}
+
 //-----------------------------------------------------------------------------
 // Central tuning surface — tweak everything here.
 //-----------------------------------------------------------------------------
@@ -369,6 +408,7 @@ static void crumpleInitInternal(void)
 
 	memset(crumpleCarState, 0, sizeof(crumpleCarState));
 	memset(crumpleModelData, 0, sizeof(crumpleModelData));
+	memset(crumpleCarCrushScale, 0, sizeof(crumpleCarCrushScale));
 
 	for (i = 0; i < MAX_CARS; i++)
 		crumpleCarState[i].otherCarId = -1;
@@ -918,6 +958,7 @@ static void crumpleDeformInternal(CAR_DATA* cp, const short* tempDamage)
 	int maxDisp;
 	int dentRadius;
 	int compCap;
+	int crushScale;
 
 	int healthBoost;
 	int massFactor;
@@ -957,9 +998,12 @@ static void crumpleDeformInternal(CAR_DATA* cp, const short* tempDamage)
 	// The three deformation magnitudes are per-car - fractions of THIS model's
 	// own size - so resolve them before anything reads them: the contact-profile
 	// loop below needs dentRadius, and the deform loop needs all three.
-	maxDisp = crumpleMaxDisp(model);
+	// The car's own crush multiplier scales the PUSH and the safety caps, not
+	// the dent's radius: 10x reaches 10x instead of saturating at the 1.0x cap.
+	crushScale = crumpleEffectiveCrushScale(cp);
+	maxDisp = FIXEDH(crumpleMaxDisp(model) * crushScale);
 	dentRadius = crumpleDentRadius(model);
-	compCap = crumpleCompoundCap(model);
+	compCap = FIXEDH(crumpleCompoundCap(model) * crushScale);
 
 	// ---- no unapplied impacts: the persistent damaged mesh stays as-is ----
 	if (st->impactCount <= 0)
@@ -1702,6 +1746,16 @@ static void CrumpleLabelBuddha(void* userdata, char* out, int max)
 	snprintf(out, max, "Buddha Mode: %s", gCrumpleBuddha ? "ON" : "OFF");
 }
 
+/* The local player's car only. The value is stored per car, so switching cars
+ * shows that car's own multiplier (1.0x until it is set). */
+static void CrumpleLabelCrush(void* userdata, char* out, int max)
+{
+	int halves = crumpleGetCarCrushScale(MainPlayer.playerCarId) / CRUMPLE_CRUSH_STEP;
+
+	(void)userdata;
+	snprintf(out, max, "Crush Multiplier: %d.%dx", halves / 2, (halves & 1) ? 5 : 0);
+}
+
 static void CrumpleLabelCol(void* userdata, char* out, int max)
 {
 	extern int gShowCollisionDebug;
@@ -1748,6 +1802,34 @@ static int CrumpleToggleBuddha(void* userdata, int direction)
 	return JER_PAUSE_QUIT_NONE;
 }
 
+/* Left/right adjust this car's body-crush multiplier in 0.5x steps, 1.0x..10.0x.
+ * CROSS (direction 0) changes nothing, like the stock volume rows. */
+static int CrumpleAdjustCrush(void* userdata, int direction)
+{
+	int carId = MainPlayer.playerCarId;
+	int scale;
+
+	(void)userdata;
+
+	if (direction == 0 || carId < 0 || carId >= MAX_CARS)
+		return JER_PAUSE_QUIT_NONE;
+
+	scale = crumpleGetCarCrushScale(carId) + direction * CRUMPLE_CRUSH_STEP;
+
+	if (scale < CRUMPLE_CRUSH_MIN)
+		scale = CRUMPLE_CRUSH_MIN;
+	else if (scale > CRUMPLE_CRUSH_MAX)
+		scale = CRUMPLE_CRUSH_MAX;
+
+	crumpleCarCrushScale[carId] = scale;
+
+	printInfo("[crumple] car %d crush multiplier %d.%dx\n",
+		carId, (scale / CRUMPLE_CRUSH_STEP) / 2,
+		((scale / CRUMPLE_CRUSH_STEP) & 1) ? 5 : 0);
+
+	return JER_PAUSE_QUIT_NONE;
+}
+
 static int CrumpleToggleCol(void* userdata, int direction)
 {
 	extern int gShowCollisionDebug;
@@ -1784,6 +1866,7 @@ static const JER_PAUSE_MENU_ITEM CrumpleMenuItems[] =
 {
 	{ NULL, CrumpleLabelPlayer, CrumpleTogglePlayer, NULL, NULL, 0 },
 	{ NULL, CrumpleLabelBuddha, CrumpleToggleBuddha, NULL, NULL, 0 },
+	{ NULL, CrumpleLabelCrush, CrumpleAdjustCrush, NULL, NULL, 1 },
 	{ "Repair Car", NULL, CrumpleRepairCar, NULL, NULL, 0 },
 	{ NULL, CrumpleLabelDpad, CrumpleToggleDpad, NULL, NULL, 0 },
 	{ NULL, CrumpleLabelOverlay, CrumpleToggleOverlay, NULL, NULL, 0 },
@@ -1791,7 +1874,7 @@ static const JER_PAUSE_MENU_ITEM CrumpleMenuItems[] =
 };
 
 static const JER_PAUSE_MENU CrumplePauseMenu =
-{ "Crumple Debug", CrumpleMenuItems, 6 };
+{ "Crumple Debug", CrumpleMenuItems, 7 };
 
 /*
  * JERICHO module entry — the generated registry calls this as

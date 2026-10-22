@@ -349,7 +349,7 @@ world units — see §3.1 for why. Raising one raises it for every car at once.
 
 ## 9. Pause-menu debug features
 
-Four features live under **Debug Options → Crumble Debug** (compiled in with
+Five features live under **Debug Options → Crumble Debug** (compiled in with
 `DEBUG_OPTIONS`, i.e. the `Release_dev` configuration):
 
 - **Player Crumple: ON/OFF** (the first row) — OFF scopes the module out of the
@@ -371,6 +371,15 @@ Four features live under **Debug Options → Crumble Debug** (compiled in with
   crumpled, but `ApplyDamage` clamps `totalDamage` to one point below the
   totaled threshold, so it never catches fire / explodes — de-facto
   invulnerability while testing the crumple.
+- **Crush Multiplier: 1.0x–10.0x** — left/right adjusts the LOCAL player's
+  current car in 0.5x steps. The value is stored per car (`CAR_DATA` slot), not
+  per machine: the car you are in has its own multiplier, and a different car
+  starts at 1.0x. Only `CONTROL_TYPE_PLAYER` cars use it, so a slot recycled as
+  traffic cannot inherit it. It scales the per-impact push and the compounding
+  cap (body deformation only — dent radius and wheel damage are unchanged), and
+  it applies to impacts recorded after the change; a dent already baked into the
+  mesh is not rescaled. In multiplayer the owner's value rides the player
+  carstate, so every machine deforms that car the same way.
 - **Repair Car** — resumes the game and smoothly repairs the player's car:
   each frame the six damage zones and `totalDamage` ease back toward 0 (at
   `repairRate`) while the persistent damaged mesh eases back toward the
