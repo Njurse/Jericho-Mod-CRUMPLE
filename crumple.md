@@ -295,7 +295,7 @@ Wheel index order is consistent everywhere: `0 = front-right, 1 = rear-right,
 | `bcollide.c` | world collision: `crumple_recordImpact(cp, NULL, hit, surfNormal, strikeVel)` after `DamageCar` (fixes the old stale-point world dent) |
 | `wheelforces.c` | wheel raycast origin offset by the full bend (vertical droop backed out of compression); force/torque lever stays on the un-bent hub; steering deviation + lateral scrub; bent-wheel roll/pitch damping |
 | `cars.c` | `DrawCarWheels` places the wheel at the bent position and transforms a per-wheel vert copy (`crumple_transformWheelVerts`) for camber/toe |
-| `pause.c` | **Crumple Debug** submenu (Debug Options): `D-Pad Deform`, `Buddha Mode` toggles + `Repair Car` |
+| `pause.c` | **Crumple Debug** submenu (Debug Options): `Player Crumple`, `D-Pad Deform`, `Buddha Mode` toggles + `Repair Car` |
 | `handling.c` | car-car `crumple_recordImpact`; `crumple_debugTick()` once per frame before the denting pass |
 | `loadsave.c` | `crumple_init()` before `LoadGameData` so restored cars start with clean crumple state |
 | `overlay.c` | debug overlay prints the player car's pending impact (normal + howHard), moved up 30px |
@@ -349,9 +349,16 @@ world units — see §3.1 for why. Raising one raises it for every car at once.
 
 ## 9. Pause-menu debug features
 
-Three features live under **Debug Options → Crumble Debug** (compiled in with
+Four features live under **Debug Options → Crumble Debug** (compiled in with
 `DEBUG_OPTIONS`, i.e. the `Release_dev` configuration):
 
+- **Player Crumple: ON/OFF** (the first row) — OFF scopes the module out of the
+  LOCAL player's car only. Its `DENT_PASS` leaves `handled` at 0, so the engine's
+  stock dent blend runs; collision recording skips that car; and the wheel-bend,
+  wheel-damage, wheel-physics and wheel-draw queries report stock values. The car
+  therefore keeps vanilla body damage and no wheel bending beyond vanilla. Other
+  cars — peers' copies, traffic, AI — are unaffected. It prevents further
+  non-vanilla damage; it does not repair damage already applied (use **Repair Car**).
 - **D-Pad Deform: OFF/ON** — a HELD directional pad grinds a simulated
   collision on the player's car at `simTickHowHard` per frame: up = front,
   down = rear, left = left side, right = right side. The impact ring merges

@@ -82,6 +82,11 @@
 
 // Buddha mode is like Source engine's -- you can take damage down to 1HP, this avoids death so the damage can still be extensively tested without full Invulnerability cheat
 int gCrumpleBuddha = 0;
+/* The pause menu's "Player Crumple" toggle. ON (the default) is the module's
+ * impact-driven deformation; OFF leaves the local player's car to the ENGINE's
+ * stock damage model: no extra body deformation, no wheel bend/damage, and no
+ * altered wheel physics. Other cars are unaffected. */
+int gCrumplePlayerEnabled = 1;
 int gCrumpleGlobalScale = 4096;
 
 //-----------------------------------------------------------------------------
@@ -734,12 +739,58 @@ static void crumpleAddImpact(CRUMPLE_CAR_STATE* st, const VECTOR* worldPoint, co
 	}
 }
 
-static void crumpleRecordImpactInternal(CAR_DATA* cp0, CAR_DATA* cp1, const VECTOR* worldPoint, const VECTOR* worldNormal, int howHard, int wheelMask)
+/* Is this the car THIS machine's player is driving? The toggle is scoped to it:
+ * a peer's car, traffic, and every other machine's copy keep their crumple. */
+static int crumpleIsLocalCarId(int carId)
 {
-	CRUMPLE_CAR_STATE* st0;
+	return carId >= 0 && carId < MAX_CARS && carId == MainPlayer.playerCarId;
+}
+
+static int crumpleCarIdMayDeform(int carId)
+{
+	return gCrumplePlayerEnabled || !crumpleIsLocalCarId(carId);
+}
+
+static int crumpleCarMayDeform(const CAR_DATA* cp)
+{
+	return cp == NULL || crumpleCarIdMayDeform(cp->id);
+}
+
+/* Record one car's half of an impact. `inwardSign` is -1 when the engine normal
+ * points from cp toward another car, +1 for a wall (where the surface normal already
+ * points into the car). Split out of crumpleRecordImpactInternal so the two cars can
+ * be filtered independently by the player-crumple toggle. */
+static void crumpleRecordOneCar(CAR_DATA* cp, int otherCarId, const VECTOR* worldPoint,
+	const VECTOR* worldNormal, int inwardSign, int howHard, int wheelMask)
+{
+	CRUMPLE_CAR_STATE* st;
 	VECTOR inward;
 	int lx, ly, lz;
 	int nx, ny, nz;
+
+	if (cp == NULL || cp->id < 0 || cp->id >= MAX_CARS)
+		return;
+
+	st = &crumpleCarState[cp->id];
+	st->otherCarId = otherCarId;
+
+	inward.vx = inwardSign * worldNormal->vx;
+	inward.vy = inwardSign * worldNormal->vy;
+	inward.vz = inwardSign * worldNormal->vz;
+
+	// snapshot the impact in car-local space NOW: the deferred denting pass
+	// runs up to a few frames later, and the car may have rotated by then
+	crumpleWorldToLocal(&cp->hd.where, worldPoint, &lx, &ly, &lz);
+	crumpleRotateToLocal(&cp->hd.where, &inward, &nx, &ny, &nz);
+
+	crumpleAddImpact(st, worldPoint, &inward, howHard, lx, ly, lz, nx, ny, nz,
+		crumpleDentRadius(cp->ap.model));
+	crumpleAccumulateWheelBend(cp, worldPoint, nx, ny, nz, howHard, wheelMask);
+}
+
+static void crumpleRecordImpactInternal(CAR_DATA* cp0, CAR_DATA* cp1, const VECTOR* worldPoint, const VECTOR* worldNormal, int howHard, int wheelMask)
+{
+	int deform0, deform1;
 
 	if (cp0 == NULL || worldPoint == NULL || worldNormal == NULL)
 		return;
@@ -747,60 +798,23 @@ static void crumpleRecordImpactInternal(CAR_DATA* cp0, CAR_DATA* cp1, const VECT
 	if (cp0->id < 0 || cp0->id >= MAX_CARS)
 		return;
 
-	st0 = &crumpleCarState[cp0->id];
+	deform0 = crumpleCarMayDeform(cp0);
+	deform1 = (cp1 != NULL) ? crumpleCarMayDeform(cp1) : 0;
 
-	st0->otherCarId = (cp1 != NULL) ? CAR_INDEX(cp1) : -1;
+	if (!deform0 && !deform1)
+		return;
 
-	// Car-car: the engine normal points FROM cp0 TOWARD cp1, so cp0's inward
-	// normal is its negation. Wall/building: surfNormal already points out of
-	// the wall and INTO the car, so it IS the inward normal. Negating it (which
-	// this used to do for both) pushed the dent OUT of the body on wall hits -
-	// the "dent on the wrong side" report, which is almost entirely walls.
-	if (cp1 != NULL)
-	{
-		inward.vx = -worldNormal->vx;
-		inward.vy = -worldNormal->vy;
-		inward.vz = -worldNormal->vz;
-	}
-	else
-	{
-		inward.vx = worldNormal->vx;
-		inward.vy = worldNormal->vy;
-		inward.vz = worldNormal->vz;
-	}
+	/* Car-car: the engine normal points FROM cp0 TOWARD cp1, so cp0's inward
+	 * normal is its negation. Wall/building: surfNormal already points out of
+	 * the wall and INTO the car, so it IS the inward normal. Negating it (which
+	 * this used to do for both) pushed the dent OUT of the body on wall hits -
+	 * the "dent on the wrong side" report, which is almost entirely walls. */
+	if (deform0)
+		crumpleRecordOneCar(cp0, (cp1 != NULL) ? CAR_INDEX(cp1) : -1,
+			worldPoint, worldNormal, (cp1 != NULL) ? -1 : 1, howHard, wheelMask);
 
-	// snapshot the impact in car-local space NOW: the deferred denting pass
-	// runs up to a few frames later, and the car may have rotated by then
-	crumpleWorldToLocal(&cp0->hd.where, worldPoint, &lx, &ly, &lz);
-	crumpleRotateToLocal(&cp0->hd.where, &inward, &nx, &ny, &nz);
-
-	crumpleAddImpact(st0, worldPoint, &inward, howHard, lx, ly, lz, nx, ny, nz,
-		crumpleDentRadius(cp0->ap.model));
-	crumpleAccumulateWheelBend(cp0, worldPoint, nx, ny, nz, howHard, wheelMask);
-
-	if (cp1 != NULL)
-	{
-		CRUMPLE_CAR_STATE* st1;
-
-		if (cp1->id < 0 || cp1->id >= MAX_CARS)
-			return;
-
-		st1 = &crumpleCarState[cp1->id];
-
-		st1->otherCarId = CAR_INDEX(cp0);
-
-		// Inward for cp1 = +normal.
-		inward.vx = worldNormal->vx;
-		inward.vy = worldNormal->vy;
-		inward.vz = worldNormal->vz;
-
-		crumpleWorldToLocal(&cp1->hd.where, worldPoint, &lx, &ly, &lz);
-		crumpleRotateToLocal(&cp1->hd.where, &inward, &nx, &ny, &nz);
-
-		crumpleAddImpact(st1, worldPoint, &inward, howHard, lx, ly, lz, nx, ny, nz,
-			crumpleDentRadius(cp1->ap.model));
-		crumpleAccumulateWheelBend(cp1, worldPoint, nx, ny, nz, howHard, wheelMask);
-	}
+	if (deform1)
+		crumpleRecordOneCar(cp1, CAR_INDEX(cp0), worldPoint, worldNormal, 1, howHard, wheelMask);
 }
 
 //-----------------------------------------------------------------------------
@@ -1236,6 +1250,9 @@ static void crumpleSimulateImpactInternal(int carId, int area, int howHard)
 	if (carId < 0 || carId >= MAX_CARS)
 		return;
 
+	if (!crumpleCarIdMayDeform(carId))
+		return;
+
 	cp = &car_data[carId];
 	cos = cp->ap.carCos;
 
@@ -1325,7 +1342,7 @@ static void crumpleDebugTickInternal(void)
 	// Held directions grind the impact at a small per-frame amplitude so the
 	// car crumples gradually instead of one crushing hit; the impact ring
 	// merges the ticks so the dent deepens over time.
-	if (gCrumpleDpadDeform)
+	if (gCrumpleDpadDeform && gCrumplePlayerEnabled)
 	{
 		int dpad = Pads[0].direct;
 		int area = -1;
@@ -1557,6 +1574,12 @@ static int crumpleOnDentPass(void* userdata, void* args)
 
 	if (a != NULL)
 	{
+		/* PLAYER CRUMPLE OFF: leave `handled` at 0 so the ENGINE's stock dent
+		 * blend runs. The car then keeps vanilla body damage, not the module's
+		 * vertex deformation. Other cars keep the module's path. */
+		if (!crumpleCarMayDeform((const CAR_DATA*)a->car))
+			return JER_RESULT_CONTINUE;
+
 		a->handled = 1;	// crumple owns the body mesh: skip the stock blend
 		crumpleDeformInternal((CAR_DATA*)a->car, (const short*)a->damage);
 	}
@@ -1579,7 +1602,7 @@ static int crumpleOnGetWheelBend(void* userdata, void* args)
 
 	(void)userdata;
 
-	if (a != NULL && crumpleSuspendedPhysics(a->carId) == 0)
+	if (a != NULL && crumpleSuspendedPhysics(a->carId) == 0 && crumpleCarIdMayDeform(a->carId))
 		a->result = crumpleGetWheelBendInternal(a->carId);
 
 	return JER_RESULT_CONTINUE;
@@ -1591,7 +1614,7 @@ static int crumpleOnGetWheelDamage(void* userdata, void* args)
 
 	(void)userdata;
 
-	if (a != NULL && crumpleSuspendedPhysics(a->carId) == 0)
+	if (a != NULL && crumpleSuspendedPhysics(a->carId) == 0 && crumpleCarIdMayDeform(a->carId))
 		a->result = crumpleGetWheelDamageTotalInternal(a->carId);
 
 	return JER_RESULT_CONTINUE;
@@ -1603,7 +1626,8 @@ static int crumpleOnGetImpactInfo(void* userdata, void* args)
 
 	(void)userdata;
 
-	if (a != NULL && a->point != NULL && a->normal != NULL && a->howHard != NULL)
+	if (a != NULL && crumpleCarIdMayDeform(a->carId) &&
+		a->point != NULL && a->normal != NULL && a->howHard != NULL)
 	{
 		crumpleGetImpactInfoInternal(a->carId,
 			(VECTOR*)a->point, (VECTOR*)a->normal, (int*)a->howHard);
@@ -1618,7 +1642,7 @@ static int crumpleOnDrawWheel(void* userdata, void* args)
 
 	(void)userdata;
 
-	if (a != NULL)
+	if (a != NULL && crumpleCarIdMayDeform(a->carId))
 	{
 		crumpleTransformWheelVertsInternal(a->carId, a->wheelnum,
 			(SVECTOR*)a->verts, a->numVerts);
@@ -1633,7 +1657,7 @@ static int crumpleOnGetWheelParams(void* userdata, void* args)
 
 	(void)userdata;
 
-	if (a != NULL && crumpleSuspendedPhysics(a->carId) == 0)
+	if (a != NULL && crumpleSuspendedPhysics(a->carId) == 0 && crumpleCarIdMayDeform(a->carId))
 	{
 		a->frontScale = gCrumpleParams.wheelSteerScale;
 		a->rearScale = gCrumpleParams.wheelSteerScaleRear;
@@ -1659,6 +1683,12 @@ static int crumpleOnGetBuddha(void* userdata, void* args)
 /* Pause menu (Crumple Debug) — registered via jer_pause_menu.h, so    */
 /* nothing is hardcoded into the game's pause code.                    */
 /* ------------------------------------------------------------------ */
+
+static void CrumpleLabelPlayer(void* userdata, char* out, int max)
+{
+	(void)userdata;
+	snprintf(out, max, "Player Crumple: %s", gCrumplePlayerEnabled ? "ON" : "OFF");
+}
 
 static void CrumpleLabelDpad(void* userdata, char* out, int max)
 {
@@ -1686,6 +1716,20 @@ static void CrumpleLabelOverlay(void* userdata, char* out, int max)
 
 	(void)userdata;
 	snprintf(out, max, "Impact Overlay: %s", gCrumpleDebugOverlay ? "ON" : "OFF");
+}
+
+static int CrumpleTogglePlayer(void* userdata, int direction)
+{
+	(void)userdata;
+	(void)direction;
+
+	/* Only OUR car changes behaviour: peers, traffic and their copies keep the
+	 * module's deformation. Existing damage is left alone; this prevents further
+	 * non-vanilla body deformation and wheel bend/damage. */
+	gCrumplePlayerEnabled ^= 1;
+
+	printInfo("[crumple] player crumple %s\n", gCrumplePlayerEnabled ? "ON" : "OFF");
+	return JER_PAUSE_QUIT_NONE;
 }
 
 static int CrumpleToggleDpad(void* userdata, int direction)
@@ -1738,15 +1782,16 @@ static int CrumpleRepairCar(void* userdata, int direction)
 
 static const JER_PAUSE_MENU_ITEM CrumpleMenuItems[] =
 {
-	{ NULL, CrumpleLabelDpad, CrumpleToggleDpad, NULL, NULL, 0 },
+	{ NULL, CrumpleLabelPlayer, CrumpleTogglePlayer, NULL, NULL, 0 },
 	{ NULL, CrumpleLabelBuddha, CrumpleToggleBuddha, NULL, NULL, 0 },
-	{ NULL, CrumpleLabelOverlay, CrumpleToggleOverlay, NULL, NULL, 0 },
-	{ NULL, CrumpleLabelCol, CrumpleToggleCol, NULL, NULL, 0 },
 	{ "Repair Car", NULL, CrumpleRepairCar, NULL, NULL, 0 },
+	{ NULL, CrumpleLabelDpad, CrumpleToggleDpad, NULL, NULL, 0 },
+	{ NULL, CrumpleLabelOverlay, CrumpleToggleOverlay, NULL, NULL, 0 },
+	{ NULL, CrumpleLabelCol, CrumpleToggleCol, NULL, NULL, 0 }
 };
 
 static const JER_PAUSE_MENU CrumplePauseMenu =
-{ "Crumple Debug", CrumpleMenuItems, 5 };
+{ "Crumple Debug", CrumpleMenuItems, 6 };
 
 /*
  * JERICHO module entry — the generated registry calls this as
