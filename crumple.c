@@ -827,7 +827,12 @@ static void crumpleRecordOneCar(CAR_DATA* cp, int otherCarId, const VECTOR* worl
 	crumpleWorldToLocal(&cp->hd.where, worldPoint, &lx, &ly, &lz);
 	crumpleRotateToLocal(&cp->hd.where, &inward, &nx, &ny, &nz);
 
-	crumpleAddImpact(st, worldPoint, &inward, howHard, lx, ly, lz, nx, ny, nz,
+	/* The body is drawn a half-turn round from `hd.where` (UpdateCarDrawMatrix
+	 * negates its X and Z rows; DrawCarWheels negates wheelDisp.vz the same
+	 * way), so car-model Z runs the other way. The dent is baked against model
+	 * vertices, so the point and normal stored for it are Z-flipped here. The
+	 * wheel path below keeps the unflipped `hd.where` values it needs. */
+	crumpleAddImpact(st, worldPoint, &inward, howHard, lx, ly, -lz, nx, ny, -nz,
 		crumpleDentRadius(cp->ap.model));
 	crumpleAccumulateWheelBend(cp, worldPoint, nx, ny, nz, howHard, wheelMask);
 }
