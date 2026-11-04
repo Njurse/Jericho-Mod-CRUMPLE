@@ -79,6 +79,7 @@
 #include "jer_events.h"	// JERICHO: event argument structs
 #include "jer_pause_menu.h"	// JERICHO: module pause menu (Crumple Debug)
 #include "jer_crumple.h"	// JERICHO: per-car crush multiplier contract (mp)
+#include "mission.h"		// gInvincibleCar / gInvulnerableWorld
 
 
 // Buddha mode is like Source engine's -- you can take damage down to 1HP, this avoids death so the damage can still be extensively tested without full Invulnerability cheat
@@ -792,6 +793,15 @@ static int crumpleIsLocalCarId(int carId)
 
 static int crumpleCarIdMayDeform(int carId)
 {
+	/* Invincible local car, or the host's "no car takes damage" rule.
+	 * Deformation is not ap.damage — leaving it on wrecks a car the cheat
+	 * has already decided cannot be hurt. */
+	if (gInvulnerableWorld)
+		return 0;
+
+	if (gInvincibleCar && crumpleIsLocalCarId(carId))
+		return 0;
+
 	return gCrumplePlayerEnabled || !crumpleIsLocalCarId(carId);
 }
 
