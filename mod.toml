@@ -1,6 +1,6 @@
 id = "crumple"
 name = "CRUMPLE"
-version = "1.1.4"
+version = "1.1.5"
 # the JERICHO interface (SDK) this mod is built against
 interface = 3
 author = "Nattdy + DeepSeek"

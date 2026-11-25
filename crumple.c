@@ -80,6 +80,7 @@
 #include "jer_pause_menu.h"	// JERICHO: module pause menu (Crumple Debug)
 #include "jer_crumple.h"	// JERICHO: per-car crush multiplier contract (mp)
 #include "mission.h"		// gInvincibleCar / gInvulnerableWorld
+#include "jer_config.h"		// JERICHO: remembers the Player Crumple toggle (CONFIG/crumple.ini)
 
 
 // Buddha mode is like Source engine's -- you can take damage down to 1HP, this avoids death so the damage can still be extensively tested without full Invulnerability cheat
@@ -1843,6 +1844,7 @@ static int CrumpleTogglePlayer(void* userdata, int direction)
 	 * module's deformation. Existing damage is left alone; this prevents further
 	 * non-vanilla body deformation and wheel bend/damage. */
 	gCrumplePlayerEnabled ^= 1;
+	jer_config_set_int("crumple", "player_crumple", gCrumplePlayerEnabled);
 
 	printInfo("[crumple] player crumple %s\n", gCrumplePlayerEnabled ? "ON" : "OFF");
 	return JER_PAUSE_QUIT_NONE;
@@ -1966,6 +1968,9 @@ JER_MODULE_ENTRY(jer_module_crumple_entry)(JERICHO_CONTEXT* ctx)
 	ctx->jer_register_hook(ctx, JER_EVENT_GET_BUDDHA, crumpleOnGetBuddha, NULL, 0);
 	ctx->jer_register_hook(ctx, JER_CRUMPLE_GET_SCALE, crumpleOnGetCrushScale, NULL, 0);
 	ctx->jer_register_hook(ctx, JER_CRUMPLE_SET_SCALE, crumpleOnSetCrushScale, NULL, 0);
+
+	/* the Player Crumple toggle survives restarts (CONFIG/crumple.ini) */
+	gCrumplePlayerEnabled = jer_config_get_int("crumple", "player_crumple", 1) ? 1 : 0;
 
 	/* pause menu: provided by this module, not hardcoded in the game */
 	jer_pause_menu_register(&CrumplePauseMenu);
